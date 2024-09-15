@@ -141,6 +141,9 @@ class BinhLuan(Interaction):
 class Thich(Interaction):
     thich = models.CharField(max_length=10, default='like')
 
+    class Meta:
+        unique_together = ('user', 'sach')
+
     def __str__(self):
         return f'Like by {self.user.username} on {self.sach.tenSach}'
 

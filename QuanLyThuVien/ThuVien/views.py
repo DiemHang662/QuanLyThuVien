@@ -1,5 +1,6 @@
 from datetime import timezone
 
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -146,19 +147,17 @@ class ThichViewSet(viewsets.ModelViewSet):
     @action(methods=['post'], detail=True, url_path='toggle-like')
     def toggle_like(self, request, pk=None):
         user = request.user
-        sach = Sach.objects.get(pk=pk)
+        sach = get_object_or_404(Sach, pk=pk)
+        thich_status = 'like'
 
-        # The 'loaiThich' should default to 'like' since only 'like' is supported
-        loaiThich = 'like'
-
-        # Check if the user has already liked the book
         try:
-            like = Thich.objects.get(user=user, sach=sach, thich=loaiThich)
-            like.delete()  # If found, the user is unliking, so delete it
+            # Kiểm tra xem người dùng đã thích sách này chưa
+            thich = Thich.objects.get(user=user, sach=sach)
+            thich.delete()  # Nếu đã thích, bỏ thích
             return Response({'detail': 'Đã bỏ thích.'}, status=status.HTTP_204_NO_CONTENT)
         except Thich.DoesNotExist:
-            # If not found, create a new like interaction
-            Thich.objects.create(user=user, sach=sach, thich=loaiThich)
+            # Nếu chưa thích, thêm tương tác "like"
+            Thich.objects.create(user=user, sach=sach, thich=thich_status)
             return Response({'detail': 'Đã thích.'}, status=status.HTTP_201_CREATED)
 
 class BinhLuanViewSet(viewsets.ModelViewSet):
