@@ -163,14 +163,29 @@ class ThichViewSet(viewsets.ModelViewSet):
 class BinhLuanViewSet(viewsets.ModelViewSet):
     queryset = BinhLuan.objects.all()
     serializer_class = BinhLuanSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    def list(self, request, *args, **kwargs):
+        sach_id = request.query_params.get('sach_id')  # Get sach_id from query params
+        if sach_id:
+            queryset = BinhLuan.objects.filter(sach__id=sach_id)  # Filter comments by book
+        else:
+            queryset = BinhLuan.objects.all()  # Default to all comments if no sach_id is provided
 
-    @action(methods=['post'], detail=True, url_path='create-comment')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # User creates a comment for a specific book
+    @action(methods=['post'], detail=True, url_path='create-comment', permission_classes=[IsAuthenticated])
     def create_comment(self, request, pk=None):
-        sach = Sach.objects.get(pk=pk)
+        try:
+            sach = Sach.objects.get(pk=pk)
+        except Sach.DoesNotExist:
+            return Response({"error": "Book not found."}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user, sach=sach)
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
