@@ -44,7 +44,6 @@ class DanhMuc(models.Model):
     def __str__(self):
         return self.tenDanhMuc
 
-
 # Book model
 class Sach(models.Model):
     tenSach = models.CharField(max_length=255)
@@ -55,6 +54,7 @@ class Sach(models.Model):
     soSachDangMuon = models.IntegerField(default=0)
     danhMuc = models.ForeignKey(DanhMuc, on_delete=models.CASCADE, related_name="books")
     anhSach = CloudinaryField('anhSach', null=True, blank=True)
+    totalBorrowCount = models.IntegerField(default=0)
 
     def __str__(self):
         return self.tenSach
@@ -63,6 +63,7 @@ class Sach(models.Model):
         if self.soLuong > 0:
             self.soLuong -= 1
             self.soSachDangMuon += 1
+            self.totalBorrowCount += 1
             self.save()
 
     def return_book(self):
@@ -73,7 +74,7 @@ class Sach(models.Model):
 
 # Borrowing slip model (Phiếu Mượn)
 class PhieuMuon(models.Model):
-    docGia = models.ForeignKey(NguoiDung, on_delete=models.CASCADE, related_name="phieu_muon")
+    docGia = models.ForeignKey(NguoiDung, on_delete=models.CASCADE)
     ngayMuon = models.DateField(default=timezone.now)
     ngayTraDuKien = models.DateField()
 

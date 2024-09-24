@@ -8,7 +8,7 @@ SECRET_KEY = 'django-insecure-g0=j%u&t%_yh(c*lt0pyv72)0@zm782qg!^ogx5g43wo+#d6h8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['192.168.1.6']
+ALLOWED_HOSTS = ['192.168.1.7']
 
 cloudinary.config(
     cloud_name="dmjydfpev",

@@ -1,14 +1,14 @@
 from rest_framework import serializers
 from .models import DanhMuc, Sach, NguoiDung, PhieuMuon, ChiTietPhieuMuon, BinhLuan, Thich, ChiaSe
 
-
 class DanhMucSerializer(serializers.ModelSerializer):
     class Meta:
         model = DanhMuc
         fields = '__all__'
 
 class SachSerializer(serializers.ModelSerializer):
-    danhMuc = DanhMucSerializer()
+    #danhMuc = serializers.PrimaryKeyRelatedField(queryset=DanhMuc.objects.all())
+    tenDanhMuc = serializers.CharField(source='danhMuc.tenDanhMuc')
     anhSach_url = serializers.SerializerMethodField()
     anhSach = serializers.ImageField(write_only=True, required=False)
 
@@ -70,16 +70,20 @@ class NguoiDungSerializer(serializers.ModelSerializer):
         }
 
 class PhieuMuonSerializer(serializers.ModelSerializer):
-    docGia = NguoiDungSerializer(read_only=True)
-
+    first_name = serializers.CharField(source='docGia.first_name', read_only=True)
+    last_name = serializers.CharField(source='docGia.last_name', read_only=True)
     class Meta:
         model = PhieuMuon
         fields = '__all__'
 
 
 class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
-    sach = SachSerializer(read_only=True)
-    phieuMuon = PhieuMuonSerializer(read_only=True)
+    sach_id = serializers.CharField(source='sach.id', read_only=True)
+    tenSach = serializers.CharField(source='sach.tenSach', read_only=True)
+    docGia_id = serializers.CharField(source='phieuMuon.docGia.id', read_only=True)
+    phieuMuon_id = serializers.CharField(source='phieuMuon.id', read_only=True)
+    first_name = serializers.CharField(source='phieuMuon.docGia.first_name', read_only=True)  #
+    last_name = serializers.CharField(source='phieuMuon.docGia.last_name', read_only=True)  # Display username of docGia
 
     class Meta:
         model = ChiTietPhieuMuon
