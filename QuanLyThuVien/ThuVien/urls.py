@@ -3,6 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .admin import admin_site
 from . import views
+from .views import ChiTietPhieuMuonViewSet
 
 router = DefaultRouter()
 router.register('danhmuc', views.DanhMucViewSet, basename='danhmuc')

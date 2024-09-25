@@ -28,6 +28,20 @@ class NguoiDungViewSet(viewsets.ModelViewSet):
             return NguoiDung.objects.filter(id=user.id)
         return NguoiDung.objects.none()
 
+    @action(detail=True, methods=['get'], url_path='borrowed-books')
+    def get_borrowed_books(self, request, pk=None):
+        # Retrieve the user by the provided primary key (user ID)
+        user = self.get_object()  # This will use the primary key (pk) to get the user
+
+        borrowed_books = ChiTietPhieuMuon.objects.filter(
+            phieuMuon__docGia=user,
+            tinhTrang__in=['returned', 'borrowed', 'late']
+        )
+
+        # Serialize the borrowed books
+        serializer = ChiTietPhieuMuonSerializer(borrowed_books, many=True)
+        return Response(serializer.data)
+
     @action(methods=['get', 'patch'], url_path='current-user', detail=False)
     def get_current_user(self, request):
         user = request.user
@@ -291,9 +305,23 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
 
     @action(methods=['post'], detail=False, url_path='create-ctpm')
     def create_ctpm(self, request):
-        serializer = PhieuMuonSerializer(data=request.data)
+        # Ensure the request data includes references to NguoiDung, PhieuMuon, and Sach
+        phieu_muon_id = request.data.get('phieuMuon')
+        sach_id = request.data.get('sach')
+
+        try:
+            phieu_muon = PhieuMuon.objects.get(id=phieu_muon_id)
+            sach = Sach.objects.get(id=sach_id)
+        except (PhieuMuon.DoesNotExist, Sach.DoesNotExist):
+            return Response({'error': 'Invalid PhieuMuon or Sach ID'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create the ChiTietPhieuMuon instance
+        serializer = ChiTietPhieuMuonSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+
+        # Associate with the current user (NguoiDung) if needed
+        chi_tiet_phieu_muon = serializer.save()
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
@@ -311,6 +339,8 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
             return Response({"message": "ChiTietPhieuMuon deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
         except ChiTietPhieuMuon.DoesNotExist:
             return Response({"error": "ChiTietPhieuMuon not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
 
 class ThichViewSet(viewsets.ModelViewSet):
     queryset = Thich.objects.all()

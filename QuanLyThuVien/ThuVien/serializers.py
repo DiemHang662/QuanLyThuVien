@@ -82,8 +82,22 @@ class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
     tenSach = serializers.CharField(source='sach.tenSach', read_only=True)
     docGia_id = serializers.CharField(source='phieuMuon.docGia.id', read_only=True)
     phieuMuon_id = serializers.CharField(source='phieuMuon.id', read_only=True)
+    ngayMuon= serializers.CharField(source='phieuMuon.ngayMuon', read_only=True)
     first_name = serializers.CharField(source='phieuMuon.docGia.first_name', read_only=True)  #
     last_name = serializers.CharField(source='phieuMuon.docGia.last_name', read_only=True)  # Display username of docGia
+    anhSach_url = serializers.SerializerMethodField()
+    anhSach = serializers.ImageField(write_only=True, required=False)
+
+    def get_anhSach_url(self, instance):
+        if instance.sach and instance.sach.anhSach:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(instance.sach.anhSach.url)
+            return instance.sach.anhSach.url
+        return None
+
+    def create(self, validated_data):
+        return super().create(validated_data)
 
     class Meta:
         model = ChiTietPhieuMuon
