@@ -7,8 +7,7 @@ class DanhMucSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class SachSerializer(serializers.ModelSerializer):
-    #danhMuc = serializers.PrimaryKeyRelatedField(queryset=DanhMuc.objects.all())
-    tenDanhMuc = serializers.CharField(source='danhMuc.tenDanhMuc')
+    tenDanhMuc = serializers.CharField(source='danhMuc.tenDanhMuc',read_only=True)
     anhSach_url = serializers.SerializerMethodField()
     anhSach = serializers.ImageField(write_only=True, required=False)
 

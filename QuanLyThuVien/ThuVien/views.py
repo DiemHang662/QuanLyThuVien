@@ -1,6 +1,7 @@
 from datetime import timezone
-
+from django.utils import timezone
 from django.db import transaction
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
@@ -175,22 +176,113 @@ class SachViewSet(viewsets.ModelViewSet):
         except Sach.DoesNotExist:
             return Response({"error": "Sach not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    @action(methods=['get'], detail=False, url_path='by-danhmuc')
-    def by_danhmuc(self, request):
-        danhmuc_id = request.query_params.get('danhmuc', None)
-        if danhmuc_id:
-            try:
-                # Fetch the category
-                danhmuc = DanhMuc.objects.get(pk=danhmuc_id)
-                # Filter books by the category
-                books = Sach.objects.filter(danhMuc=danhmuc)
-                # Serialize the data
-                serializer = SachSerializer(books, many=True)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            except DanhMuc.DoesNotExist:
-                return Response({'detail': 'Danh mục không tồn tại.'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            return Response({'detail': 'Danh mục không được cung cấp.'}, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=False, methods=['get'], url_path='most-borrowed')
+    def most_borrowed(self, request):
+        try:
+            # Filter books with totalBorrowCount > 0, order by totalBorrowCount in descending order, and limit to 5 books
+            most_borrowed_books = Sach.objects.filter(totalBorrowCount__gt=0).order_by('-totalBorrowCount')[:5]
+
+            if most_borrowed_books:
+                # Create a list of top 5 books with their total borrow count
+                result = [
+                    {
+                        'tenSach': book.tenSach,
+                        'total_borrow_count': book.totalBorrowCount
+                    }
+                    for book in most_borrowed_books
+                ]
+
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response({'message': 'No books have been borrowed yet.'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='total-borrow-return-counts')
+    def total_borrow_return_counts(self, request):
+        try:
+            # Aggregate the total borrow counts across all books
+            total_borrow_count = Sach.objects.aggregate(total=Sum('totalBorrowCount'))['total'] or 0
+
+            result = {
+                'total_borrow_count': total_borrow_count,
+            }
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='most-liked')
+    def most_liked_books(self, request):
+        try:
+            # Annotate the number of likes for each book and order by like count
+            most_liked_books = Sach.objects.annotate(like_count=Count('thich')).order_by('-like_count')[:5]
+
+            # Prepare the result list
+            result = [
+                {
+                    'tenSach': book.tenSach,
+                    'like_count': book.like_count  # Access the annotated like count
+                }
+                for book in most_liked_books
+            ]
+
+            if result:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response({'message': 'No likes found for any books.'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Log the error for debugging
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='most-commented')
+    def most_commented_books(self, request):
+        try:
+            # Annotate the number of content (comments) from BinhLuan for each book and order by comment count
+            most_commented_books = Sach.objects.annotate(
+                comment_count=Count('binhluan__content')
+            ).order_by('-comment_count')[:5]
+
+            # Prepare the result list
+            result = [
+                {
+                    'tenSach': book.tenSach,
+                    'comment_count': book.comment_count  # Access the annotated comment count
+                }
+                for book in most_commented_books
+            ]
+
+            if result:
+                return Response(result, status=status.HTTP_200_OK)
+            else:
+                return Response({'message': 'No comments found for any books.'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Return an error message in case of an exception
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='total-interactions')
+    def total_interactions(self, request):
+        try:
+            # Calculate the total likes and comments across all books
+            total_likes = Sach.objects.annotate(like_count=Count('thich')).aggregate(total_likes=Count('like_count'))[
+                              'total_likes'] or 0
+            total_comments = Sach.objects.annotate(comment_count=Count('binhluan__content')).aggregate(
+                total_comments=Count('comment_count'))['total_comments'] or 0
+
+            # Calculate the combined total
+            combined_total = total_likes + total_comments
+
+            return Response({
+                'combined_total': combined_total
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['post'])
     def bulk_borrow(self, request):
         try:
@@ -237,7 +329,6 @@ class SachViewSet(viewsets.ModelViewSet):
                 user = request.user
                 returned_books = []
 
-                # Loop through each borrow record to return
                 for chi_tiet_id in data:
                     chi_tiet = ChiTietPhieuMuon.objects.get(id=chi_tiet_id)
                     if chi_tiet.phieuMuon.docGia == user and chi_tiet.tinhTrang == 'borrowed':
@@ -258,6 +349,54 @@ class SachViewSet(viewsets.ModelViewSet):
         threshold = int(request.query_params.get('threshold', 20))  # Default threshold is 20
         high_borrow_books = Sach.objects.filter(totalBorrowCount__gte=threshold)
         return Response(SachSerializer(high_borrow_books, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='most-returned-books')
+    def most_returned_books(self, request):
+        most_returned_books = Sach.objects.filter(
+            chi_tiet_phieu_muon__tinhTrang='returned'
+        ).annotate(return_count=Count('chi_tiet_phieu_muon', filter=Q(chi_tiet_phieu_muon__tinhTrang='returned'))
+                   ).order_by('-return_count')[:5]
+
+        result = [
+            {
+                'tenSach': book.tenSach,
+                'return_count': book.return_count
+            } for book in most_returned_books
+        ]
+
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='most-borrowed-books')
+    def most_borrowed_books(self, request):
+        most_borrowed_books = Sach.objects.filter(
+            chi_tiet_phieu_muon__tinhTrang='borrowed'
+        ).annotate(borrow_count=Count('chi_tiet_phieu_muon', filter=Q(chi_tiet_phieu_muon__tinhTrang='borrowed'))
+                   ).order_by('-borrow_count')[:5]
+
+        result = [
+            {
+                'tenSach': book.tenSach,
+                'borrow_count': book.borrow_count
+            } for book in most_borrowed_books
+        ]
+
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='most-late-books')
+    def most_late_books(self, request):
+        most_late_books = Sach.objects.filter(
+            chi_tiet_phieu_muon__tinhTrang='late'
+        ).annotate(late_count=Count('chi_tiet_phieu_muon', filter=Q(chi_tiet_phieu_muon__tinhTrang='late'))
+                   ).order_by('-late_count')[:5]
+
+        result = [
+            {
+                'tenSach': book.tenSach,
+                'late_count': book.late_count
+            } for book in most_late_books
+        ]
+
+        return Response(result, status=status.HTTP_200_OK)
 
 class PhieuMuonViewSet(viewsets.ModelViewSet):
     queryset = PhieuMuon.objects.all()
