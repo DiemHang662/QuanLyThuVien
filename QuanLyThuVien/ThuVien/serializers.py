@@ -71,9 +71,14 @@ class NguoiDungSerializer(serializers.ModelSerializer):
 class PhieuMuonSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='docGia.first_name', read_only=True)
     last_name = serializers.CharField(source='docGia.last_name', read_only=True)
+    tenSach = serializers.SerializerMethodField()
     class Meta:
         model = PhieuMuon
         fields = '__all__'
+
+    def get_tenSach(self, obj):
+        # Lấy tên sách từ các ChiTietPhieuMuon liên quan đến PhieuMuon
+        return [chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()]
 
 
 class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
@@ -82,8 +87,10 @@ class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
     docGia_id = serializers.CharField(source='phieuMuon.docGia.id', read_only=True)
     phieuMuon_id = serializers.CharField(source='phieuMuon.id', read_only=True)
     ngayMuon= serializers.CharField(source='phieuMuon.ngayMuon', read_only=True)
-    first_name = serializers.CharField(source='phieuMuon.docGia.first_name', read_only=True)  #
-    last_name = serializers.CharField(source='phieuMuon.docGia.last_name', read_only=True)  # Display username of docGia
+    ngayTraDuKien = serializers.CharField(source='phieuMuon.ngayTraDuKien', read_only=True)
+    first_name = serializers.CharField(source='phieuMuon.docGia.first_name', read_only=True)
+    last_name = serializers.CharField(source='phieuMuon.docGia.last_name', read_only=True)
+    phone = serializers.CharField(source='phieuMuon.docGia.phone', read_only=True)
     anhSach_url = serializers.SerializerMethodField()
     anhSach = serializers.ImageField(write_only=True, required=False)
 

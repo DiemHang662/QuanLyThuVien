@@ -1,16 +1,30 @@
-from datetime import timezone
+import urllib
+from distutils.command.config import config
+import json
+import random
+import time
+import hmac
+import hashlib
+import urllib.request
+from django.conf import settings
+from datetime import timezone, datetime
+from django.contrib.sites import requests
+from django.http import HttpRequest, JsonResponse, HttpResponse
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.views import APIView
+
+from .forms import PaymentForm
 from .models import DanhMuc, Sach, NguoiDung, PhieuMuon, ChiTietPhieuMuon, Thich, BinhLuan, ChiaSe
 from .serializers import DanhMucSerializer, SachSerializer, NguoiDungSerializer, PhieuMuonSerializer, ThichSerializer, \
     BinhLuanSerializer, ChiaSeSerializer, ChiTietPhieuMuonSerializer
-
 
 class NguoiDungViewSet(viewsets.ModelViewSet):
     queryset = NguoiDung.objects.all()
@@ -160,6 +174,22 @@ class SachViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='by-danhmuc')
+    def by_danhmuc(self, request, pk=None):
+        try:
+            if pk is None:
+                books = Sach.objects.all()
+            else:
+                category = DanhMuc.objects.get(pk=pk)
+                books = Sach.objects.filter(danhMuc=category)
+
+            serializer = SachSerializer(books, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except DanhMuc.DoesNotExist:
+            return Response({"error": "Danh mục không tìm thấy."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
@@ -179,11 +209,8 @@ class SachViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='most-borrowed')
     def most_borrowed(self, request):
         try:
-            # Filter books with totalBorrowCount > 0, order by totalBorrowCount in descending order, and limit to 5 books
-            most_borrowed_books = Sach.objects.filter(totalBorrowCount__gt=0).order_by('-totalBorrowCount')[:5]
-
+            most_borrowed_books = Sach.objects.filter(totalBorrowCount__gt=0)[:5]
             if most_borrowed_books:
-                # Create a list of top 5 books with their total borrow count
                 result = [
                     {
                         'tenSach': book.tenSach,
@@ -218,7 +245,7 @@ class SachViewSet(viewsets.ModelViewSet):
     def most_liked_books(self, request):
         try:
             # Annotate the number of likes for each book and order by like count
-            most_liked_books = Sach.objects.annotate(like_count=Count('thich')).order_by('-like_count')[:5]
+            most_liked_books = Sach.objects.annotate(like_count=Count('thich'))[:5]
 
             # Prepare the result list
             result = [
@@ -244,7 +271,7 @@ class SachViewSet(viewsets.ModelViewSet):
             # Annotate the number of content (comments) from BinhLuan for each book and order by comment count
             most_commented_books = Sach.objects.annotate(
                 comment_count=Count('binhluan__content')
-            ).order_by('-comment_count')[:5]
+            )[:5]
 
             # Prepare the result list
             result = [
@@ -267,16 +294,18 @@ class SachViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='total-interactions')
     def total_interactions(self, request):
         try:
-            # Calculate the total likes and comments across all books
-            total_likes = Sach.objects.annotate(like_count=Count('thich')).aggregate(total_likes=Count('like_count'))[
-                              'total_likes'] or 0
-            total_comments = Sach.objects.annotate(comment_count=Count('binhluan__content')).aggregate(
-                total_comments=Count('comment_count'))['total_comments'] or 0
+            # Calculate the total likes across all books
+            total_likes = Sach.objects.aggregate(total_likes=Count('thich'))['total_likes'] or 0
 
-            # Calculate the combined total
+            # Calculate the total comments across all books
+            total_comments = Sach.objects.aggregate(total_comments=Count('binhluan'))['total_comments'] or 0
+
+            # Calculate the combined total of likes and comments
             combined_total = total_likes + total_comments
 
             return Response({
+                'total_likes': total_likes,
+                'total_comments': total_comments,
                 'combined_total': combined_total
             }, status=status.HTTP_200_OK)
 
@@ -321,7 +350,7 @@ class SachViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Bulk return endpoint
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='returned')
     def bulk_return(self, request):
         try:
             with transaction.atomic():
@@ -398,10 +427,84 @@ class SachViewSet(viewsets.ModelViewSet):
 
         return Response(result, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='borrow-return-late-statistics')
+    def borrow_return_late_statistics(self, request):
+        try:
+            # Get current date
+            current_time = timezone.now()
+
+            # Get the current year and month
+            current_year = current_time.year
+            current_month = current_time.month
+
+            # Prepare result dictionary
+            result = {
+                'monthly_statistics': []
+            }
+
+            # Iterate through the last 12 months in chronological order
+            for i in range(12):
+                # Calculate year and month for the current iteration
+                month = (current_month - i) % 12
+                year = current_year - (current_month - i <= 0)
+
+                # Normalize month (January is 1, December is 12)
+                if month == 0:
+                    month = 12
+
+                # Get start and end date for the current month
+                start_date = timezone.datetime(year, month, 1)
+                end_date = timezone.datetime(year, month + 1, 1) if month < 12 else timezone.datetime(year + 1, 1, 1)
+
+                borrowed_books = ChiTietPhieuMuon.objects.filter(
+                    tinhTrang='borrowed',
+                    phieuMuon__ngayMuon__gte=start_date,
+                    phieuMuon__ngayMuon__lt=end_date
+                ).count()
+
+                returned_books = ChiTietPhieuMuon.objects.filter(
+                    tinhTrang='returned',
+                    ngayTraThucTe__gte=start_date,
+                    ngayTraThucTe__lt=end_date
+                ).count()
+
+                late_books = ChiTietPhieuMuon.objects.filter(
+                    tinhTrang='late',
+                    ngayTraThucTe__gte=start_date,
+                    ngayTraThucTe__lt=end_date
+                ).count()
+
+                # Append the statistics for the month only if there are non-zero counts
+                if borrowed_books > 0 or returned_books > 0 or late_books > 0:
+                    result['monthly_statistics'].append({
+                        'year': year,
+                        'month': month,
+                        'borrowed': borrowed_books,
+                        'returned': returned_books,
+                        'late': late_books
+                    })
+
+            # Sort the statistics by year and month (not really necessary as we are iterating in order)
+            result['monthly_statistics'].sort(key=lambda x: (x['year'], x['month']))
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class PhieuMuonViewSet(viewsets.ModelViewSet):
     queryset = PhieuMuon.objects.all()
     serializer_class = PhieuMuonSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return PhieuMuon.objects.all()
+        elif user.is_staff:
+            return PhieuMuon.objects.filter(docGia=user)
+        return PhieuMuon.objects.none()
+
     @action(methods=['post'], detail=False, url_path='create-phieumuon')
     def create_phieumuon(self, request):
         serializer = PhieuMuonSerializer(data=request.data)
@@ -442,6 +545,14 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
     serializer_class = ChiTietPhieuMuonSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return ChiTietPhieuMuon.objects.all()
+        elif user.is_staff:
+            return ChiTietPhieuMuon.objects.filter(docGia=user)
+        return ChiTietPhieuMuon.objects.none()
+
     @action(methods=['post'], detail=False, url_path='create-ctpm')
     def create_ctpm(self, request):
         # Ensure the request data includes references to NguoiDung, PhieuMuon, and Sach
@@ -478,8 +589,6 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
             return Response({"message": "ChiTietPhieuMuon deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
         except ChiTietPhieuMuon.DoesNotExist:
             return Response({"error": "ChiTietPhieuMuon not found."}, status=status.HTTP_404_NOT_FOUND)
-
-
 
 class ThichViewSet(viewsets.ModelViewSet):
     queryset = Thich.objects.all()
@@ -556,3 +665,108 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
         chi_tiet_phieu_muon.ngayTraThucTe = timezone.now()
         chi_tiet_phieu_muon.save()
         return Response({'message': 'Đã trả sách thành công.'}, status=status.HTTP_200_OK)
+
+
+@csrf_exempt
+def payment_view(request: HttpRequest):
+    partnerCode = "MOMO"
+    accessKey = "F8BBA842ECF85"
+    secretKey = "K951B6PE1waDMi640xX08PD3vg6EkVlz"
+    requestId = f"{partnerCode}{int(time.time() * 1000)}"
+    orderId = 'MM' + str(int(time.time() * 1000))
+    orderInfo = "pay with MoMo"
+    redirectUrl = "https://momo.vn/return"
+    ipnUrl = "https://callback.url/notify"
+    amount = request.headers.get('amount', '')
+    requestType = "payWithATM"
+    extraData = ""
+
+    # Construct raw signature
+    rawSignature = f"accessKey={accessKey}&amount={amount}&extraData={extraData}&ipnUrl={ipnUrl}&orderId={orderId}&orderInfo={orderInfo}&partnerCode={partnerCode}&redirectUrl={redirectUrl}&requestId={requestId}&requestType={requestType}"
+
+    # Generate signature using HMAC-SHA256
+    signature = hmac.new(secretKey.encode(), rawSignature.encode(), hashlib.sha256).hexdigest()
+
+    # Create request body as JSON
+    data = {
+        "partnerCode": partnerCode,
+        "accessKey": accessKey,
+        "requestId": requestId,
+        "amount": amount,
+        "orderId": orderId,
+        "orderInfo": orderInfo,
+        "redirectUrl": redirectUrl,
+        "ipnUrl": ipnUrl,
+        "extraData": extraData,
+        "requestType": requestType,
+        "signature": signature,
+        "lang": "vi"
+    }
+
+    # Send request to MoMo endpoint
+    url = 'https://test-payment.momo.vn/v2/gateway/api/create'
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, json=data, headers=headers)
+
+    # Process response
+    if response.status_code == 200:
+        response_data = response.json()
+        pay_url = response_data.get('payUrl')
+        return JsonResponse(response_data)
+    else:
+        return JsonResponse({"error": f"Failed to create payment request. Status code: {response.status_code}"},
+                            status=500)
+
+config = {
+    "app_id": 2553,  # Thay bằng app_id của bạn
+    "key1": "PcY4iZIKFCIdgZvA6ueMcMHHUbRLYjPL",  # Thay bằng key1 của bạn
+    "key2": "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz",  # Thay bằng key2 của bạn
+    "endpoint": "https://sb-openapi.zalopay.vn/v2/create"  # API endpoint của ZaloPay
+}
+
+class PaymentViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(methods=['post'], detail=False, url_path='zalopay/order')
+    def zalopay_create_order(self, request):
+        try:
+            transID = random.randrange(1000000)
+
+            # Create order info
+            order = {
+                "app_id": config["app_id"],
+                "app_trans_id": "{:%y%m%d}_{}".format(datetime.today(), transID),
+                "app_user": request.data.get('app_user', 'user123'),
+                "app_time": int(round(time.time() * 1000)),
+                "embed_data": json.dumps({}),
+                "item": json.dumps([{
+                    "itemid": "knb",
+                    "itemname": "Kim Nguyên Bảo",
+                    "itemprice": request.data.get('amount', 50000),
+                    "itemquantity": 1
+                }]),
+                "amount": request.data.get('amount', 50000),
+                "description": "ZaloPay - Thanh toán tiền phạt #{}".format(transID),
+                "bank_code": request.data.get('bank_code', 'zalopayapp')
+            }
+
+            # Create MAC (HMAC-SHA256)
+            data = "{}|{}|{}|{}|{}|{}|{}".format(
+                order["app_id"], order["app_trans_id"], order["app_user"],
+                order["amount"], order["app_time"], order["embed_data"], order["item"]
+            )
+
+            order["mac"] = hmac.new(config['key1'].encode(), data.encode(), hashlib.sha256).hexdigest()
+
+            # Send request to ZaloPay API
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            request_data = urllib.parse.urlencode(order).encode()
+
+            request_obj = urllib.request.Request(url=config["endpoint"], data=request_data, headers=headers)
+            response = urllib.request.urlopen(request_obj)
+            result = json.loads(response.read())
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except urllib.error.URLError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

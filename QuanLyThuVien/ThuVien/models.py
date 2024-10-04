@@ -79,7 +79,7 @@ class PhieuMuon(models.Model):
     ngayTraDuKien = models.DateField()
 
     def __str__(self):
-        return f"Phiếu mượn #{self.id} - {self.docGia.username}"
+        return f"Phiếu mượn #{self.id} - {self.docGia.username} - Ngày mượn: {self.ngayMuon} - Ngày trả dự kiến: {self.ngayTraDuKien}"
 
 class ChiTietPhieuMuon(models.Model):
     STATUS_CHOICES = (

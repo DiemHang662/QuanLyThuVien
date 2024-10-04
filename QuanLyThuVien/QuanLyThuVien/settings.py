@@ -1,5 +1,6 @@
 from pathlib import Path
 import cloudinary.api
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -8,7 +9,7 @@ SECRET_KEY = 'django-insecure-g0=j%u&t%_yh(c*lt0pyv72)0@zm782qg!^ogx5g43wo+#d6h8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['192.168.1.7']
+ALLOWED_HOSTS = ['192.168.1.8']
 
 cloudinary.config(
     cloud_name="dmjydfpev",
@@ -19,7 +20,7 @@ cloudinary.config(
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://192.168.1.6:3000",
+    "http://192.168.1.8:3000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     'drf_yasg',
     'corsheaders',
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -131,3 +133,9 @@ REST_FRAMEWORK = {
 
 CLIENT_ID = '6DOFrym6Hme0c79oOOW5CiSLWXde8CkES8RnSsnE'
 CLIENT_SECRET = 'RIzsTv5dKkIMcnJVlNzhwkbwEEbLEEKhyXLIywbBdaAXJ3ZzVNrHd80BOthil8h6PdnU7uxBMgs02UWFmpzNl6N0XpCvcNuiKyU8kaLit3zuAU0SbDjG9iaoXtJMct5y'
+
+VNPAY_TMN_CODE = 'C3DQBPKK'
+VNPAY_HASH_SECRET_KEY = 'WJPF0X7HRIT5A0KY9IHC6JXIHSPDMGCZ'
+VNPAY_PAYMENT_URL = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'  # Sandbox URL
+VNPAY_RETURN_URL = 'http://localhost:8000/payment_return/'  # Change based on your project
+
