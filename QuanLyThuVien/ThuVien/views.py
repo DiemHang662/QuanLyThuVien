@@ -159,8 +159,8 @@ class SachViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='book-count', permission_classes=[permissions.IsAuthenticated])
     def book_count(self, request):
-        book_count = Sach.objects.all().count()
-        return Response({'book_count': book_count})
+        total_books = Sach.objects.aggregate(total_quantity=Sum('soLuong'))['total_quantity'] or 0
+        return Response({'total_books': total_books})
 
     @action(methods=['post'], detail=False, url_path='create-sach')
     def create_sach(self, request):
@@ -237,6 +237,30 @@ class SachViewSet(viewsets.ModelViewSet):
             }
 
             return Response(result, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='like-count')
+    def like_count(self, request, pk=None):
+        try:
+            # Lấy sách theo ID
+            sach = Sach.objects.get(pk=pk)
+
+            # Đếm số lượt thích của sách này
+            like_count = Thich.objects.filter(sach=sach).count()
+
+            # Trả về kết quả
+            return Response(
+                {
+                    'tenSach': sach.tenSach,
+                    'like_count': like_count
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Sach.DoesNotExist:
+            return Response({'message': 'Sách không tồn tại.'}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

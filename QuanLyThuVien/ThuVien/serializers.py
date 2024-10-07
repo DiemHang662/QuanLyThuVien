@@ -62,7 +62,7 @@ class NguoiDungSerializer(serializers.ModelSerializer):
     class Meta:
         model = NguoiDung
         fields = ['id', 'first_name', 'last_name', 'email', 'phone', 'username', 'password', 'avatar', 'avatar_url',
-                  'is_staff', 'is_superuser']
+                  'is_staff', 'is_superuser','chucVu']
         extra_kwargs = {
             'password': {'write_only': True},
             'is_active': {'read_only': True}
