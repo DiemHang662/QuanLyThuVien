@@ -157,6 +157,20 @@ class SachViewSet(viewsets.ModelViewSet):
     serializer_class = SachSerializer
     permission_classes = [IsAuthenticated]
 
+    @action(detail=False, methods=['get'], url_path='thong-ke-theo-danh-muc')
+    def statistic_by_category(self, request):
+        categories = DanhMuc.objects.prefetch_related('books').annotate(book_count=Count('books'))
+
+        result = []
+        for category in categories:
+            category_data = {
+                'tenDanhMuc': category.tenDanhMuc,
+                'book_count': category.book_count,
+                'books': [book.tenSach for book in category.books.all()]  # Lấy danh sách tên sách
+            }
+            result.append(category_data)
+
+        return Response(result, status=status.HTTP_200_OK)
     @action(detail=False, methods=['get'], url_path='book-count', permission_classes=[permissions.IsAuthenticated])
     def book_count(self, request):
         total_books = Sach.objects.aggregate(total_quantity=Sum('soLuong'))['total_quantity'] or 0
@@ -171,6 +185,12 @@ class SachViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='recent-books')
+    def recent_books(self, request):
+        queryset = Sach.objects.order_by('-id')[:5]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -205,6 +225,31 @@ class SachViewSet(viewsets.ModelViewSet):
             return Response({"message": "Sach deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
         except Sach.DoesNotExist:
             return Response({"error": "Sach not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['get'], url_path='so-lan-muon-tra-quahan')
+    def so_lan_muon_tra_qua_han(self, request, pk=None):
+        try:
+            sach = Sach.objects.get(pk=pk)
+
+            # Đếm số lần mượn và trả
+            borrowed_count = ChiTietPhieuMuon.objects.filter(sach=sach, tinhTrang='borrowed').count()
+            returned_count = ChiTietPhieuMuon.objects.filter(sach=sach, tinhTrang='returned').count()
+            late_count = ChiTietPhieuMuon.objects.filter(sach=sach, tinhTrang='late').count()
+            result = {
+                'tenSach': sach.tenSach,
+                'borrowed_count': borrowed_count,
+                'returned_count': returned_count,
+                'late_count': late_count,
+            }
+
+            return Response(result, status=status.HTTP_200_OK)
+
+        except Sach.DoesNotExist:
+
+            return Response({'error': 'Sách không tồn tại.'}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path='most-borrowed')
     def most_borrowed(self, request):
@@ -268,22 +313,22 @@ class SachViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='most-liked')
     def most_liked_books(self, request):
         try:
-            # Annotate the number of likes for each book and order by like count
-            most_liked_books = Sach.objects.annotate(like_count=Count('thich'))[:5]
+            # Annotate the number of likes for each book, order by like count, and limit to 5
+            most_liked_books = Sach.objects.annotate(like_count=Count('thich')).order_by('-like_count')[:5]
 
             # Prepare the result list
             result = [
                 {
+                    'id': book.id,
                     'tenSach': book.tenSach,
-                    'like_count': book.like_count  # Access the annotated like count
+                    'tenTacGia': book.tenTacGia,
+                    'anhSach_url': book.anhSach.url if book.anhSach else None,
+                    'like_count': book.like_count
                 }
                 for book in most_liked_books
             ]
 
-            if result:
-                return Response(result, status=status.HTTP_200_OK)
-            else:
-                return Response({'message': 'No likes found for any books.'}, status=status.HTTP_200_OK)
+            return Response(result, status=status.HTTP_200_OK)
 
         except Exception as e:
             # Log the error for debugging

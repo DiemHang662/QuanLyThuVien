@@ -122,10 +122,24 @@ class BinhLuanSerializer(serializers.ModelSerializer):
 class ThichSerializer(serializers.ModelSerializer):
     user = NguoiDungSerializer(read_only=True)
     sach = SachSerializer(read_only=True)
+    anhSach_url = serializers.SerializerMethodField()
+    anhSach = serializers.ImageField(write_only=True, required=False)
+    tenTacGia= serializers.CharField(source='sach.tenTacGia', read_only=True)
+
+    def get_anhSach_url(self, instance):
+        if instance.sach and instance.sach.anhSach:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(instance.sach.anhSach.url)
+            return instance.sach.anhSach.url
+        return None
+
+    def create(self, validated_data):
+        return super().create(validated_data)
 
     class Meta:
         model = Thich
-        fields = ['id','thich', 'user', 'sach', 'created_at', 'updated_at']
+        fields = ['id','thich', 'user', 'sach', 'created_at', 'updated_at','anhSach','anhSach_url']
 
 
 class ChiaSeSerializer(serializers.ModelSerializer):
