@@ -61,7 +61,7 @@ class NguoiDungSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NguoiDung
-        fields = ['id', 'first_name', 'last_name', 'email', 'phone', 'username', 'password', 'avatar', 'avatar_url',
+        fields = ['id', 'first_name', 'last_name','nam_sinh', 'email', 'phone', 'username', 'password', 'avatar', 'avatar_url',
                   'is_staff', 'is_superuser','chucVu']
         extra_kwargs = {
             'password': {'write_only': True},
@@ -77,8 +77,10 @@ class PhieuMuonSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_tenSach(self, obj):
-        # Lấy tên sách từ các ChiTietPhieuMuon liên quan đến PhieuMuon
-        return [chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()]
+        return [
+            chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()
+            if chi_tiet.sach is not None and chi_tiet.sach.is_active  # Check for None and active status
+        ]
 
 
 class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
@@ -104,6 +106,12 @@ class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return super().create(validated_data)
+
+    def get_tenSach(self, obj):
+        return [
+            chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()
+            if chi_tiet.sach is not None and chi_tiet.sach.is_active  # Ensure sach is active
+        ]
 
     class Meta:
         model = ChiTietPhieuMuon

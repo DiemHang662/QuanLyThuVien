@@ -1,4 +1,5 @@
 import urllib
+from collections import Counter
 from distutils.command.config import config
 import json
 import random
@@ -43,10 +44,33 @@ class NguoiDungViewSet(viewsets.ModelViewSet):
             return NguoiDung.objects.filter(id=user.id)
         return NguoiDung.objects.none()
 
+    @action(detail=False, methods=['get'], url_path='thong-ke-do-tuoi')
+    def thong_ke_do_tuoi(self, request):
+        try:
+            current_year = datetime.now().year
+            ages = []
+
+            # Calculate ages for each user
+            users = NguoiDung.objects.all()
+            for user in users:
+                if user.nam_sinh is not None:
+                    age = current_year - user.nam_sinh
+                    ages.append(age)
+
+            age_count = Counter(ages)
+
+            age_statistics = [{"age": age, "count": count} for age, count in age_count.items()]
+
+            return Response(age_statistics, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Log the exception if needed
+            return Response({"error": "An error occurred while fetching age statistics."},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['get'], url_path='borrowed-books')
     def get_borrowed_books(self, request, pk=None):
-        # Retrieve the user by the provided primary key (user ID)
-        user = self.get_object()  # This will use the primary key (pk) to get the user
+        user = self.get_object()
 
         borrowed_books = ChiTietPhieuMuon.objects.filter(
             phieuMuon__docGia=user,
@@ -178,15 +202,18 @@ class SachViewSet(viewsets.ModelViewSet):
 
     @action(methods=['post'], detail=False, url_path='create-sach')
     def create_sach(self, request):
-        serializer = SachSerializer(data=request.data)
+        data = request.data.copy()
+        data['is_active'] = True
+
+        serializer = SachSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        queryset = self.get_queryset().filter(is_active=True)
+        serializer = SachSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='recent-books')
     def recent_books(self, request):
@@ -220,9 +247,10 @@ class SachViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['delete'], url_path='delete-sach')
     def delete_sach(self, request, pk=None):
         try:
-            sach= self.get_object()
-            sach.delete()
-            return Response({"message": "Sach deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
+            sach = self.get_object()
+            sach.is_active = False  # Mark the book as inactive
+            sach.save()  # Save the change
+            return Response({"message": "Sach marked as inactive successfully!"}, status=status.HTTP_204_NO_CONTENT)
         except Sach.DoesNotExist:
             return Response({"error": "Sach not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -253,20 +281,48 @@ class SachViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='most-borrowed')
     def most_borrowed(self, request):
-        try:
-            most_borrowed_books = Sach.objects.filter(totalBorrowCount__gt=0)[:5]
-            if most_borrowed_books:
-                result = [
-                    {
-                        'tenSach': book.tenSach,
-                        'total_borrow_count': book.totalBorrowCount
-                    }
-                    for book in most_borrowed_books
-                ]
+        month = request.query_params.get('month', '').strip('/')
+        year = request.query_params.get('year', '').strip('/')
 
-                return Response(result, status=status.HTTP_200_OK)
+        try:
+            if month and year:
+                # Validate month and year
+                if not (1 <= int(month) <= 12):
+                    return Response({'error': 'Invalid month. Must be between 1 and 12.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if not (1900 <= int(year) <= datetime.now().year):
+                    return Response({'error': 'Invalid year.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Get start and end dates for the specified month and year
+                start_date = timezone.datetime(int(year), int(month), 1)
+                end_date = timezone.datetime(int(year), int(month) + 1, 1) if int(month) < 12 else timezone.datetime(
+                    int(year) + 1, 1, 1)
+
+                # Query to count the most borrowed books based on ngayMuon in PhieuMuon
+                most_borrowed_books = ChiTietPhieuMuon.objects.filter(
+                    phieuMuon__ngayMuon__gte=start_date,
+                    phieuMuon__ngayMuon__lt=end_date
+                ).values('sach__tenSach').annotate(
+                    total_borrow_count=Count('sach')
+                ).order_by('-total_borrow_count')
+
+                if most_borrowed_books:
+                    result = [
+                        {
+                            'tenSach': book['sach__tenSach'],
+                            'total_borrow_count': book['total_borrow_count']
+                        }
+                        for book in most_borrowed_books
+                    ]
+
+                    return Response(result, status=status.HTTP_200_OK)
+                else:
+                    return Response({'message': 'No books have been borrowed in this month.'},
+                                    status=status.HTTP_200_OK)
+
             else:
-                return Response({'message': 'No books have been borrowed yet.'}, status=status.HTTP_200_OK)
+                return Response({'error': 'Month and year parameters are required.'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -617,9 +673,9 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            return ChiTietPhieuMuon.objects.all()
+            return ChiTietPhieuMuon.objects.filter(sach__is_active=True)  # Only active books
         elif user.is_staff:
-            return ChiTietPhieuMuon.objects.filter(docGia=user)
+            return ChiTietPhieuMuon.objects.filter(docGia=user, sach__is_active=True)  # Only active books for staff
         return ChiTietPhieuMuon.objects.none()
 
     @action(methods=['post'], detail=False, url_path='create-ctpm')
