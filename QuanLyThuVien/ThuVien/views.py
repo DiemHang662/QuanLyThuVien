@@ -617,6 +617,51 @@ class SachViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='filter-books')
+    def filter_books(self, request):
+        month = request.query_params.get('month', '').strip('/')
+        year = request.query_params.get('year', '').strip('/')
+        tinhTrang = request.query_params.get('tinhTrang', '').strip('/')
+
+        try:
+            if month and year:
+                # Validate month and year
+                if not (1 <= int(month) <= 12):
+                    return Response({'error': 'Invalid month. Must be between 1 and 12.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if not (1900 <= int(year) <= datetime.now().year):
+                    return Response({'error': 'Invalid year.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Get start and end dates for the specified month and year
+                start_date = timezone.datetime(int(year), int(month), 1)
+                end_date = timezone.datetime(int(year), int(month) + 1, 1) if int(month) < 12 else timezone.datetime(
+                    int(year) + 1, 1, 1)
+
+                filtered_books = ChiTietPhieuMuon.objects.filter(
+                    (Q(phieuMuon__ngayMuon__gte=start_date, phieuMuon__ngayMuon__lt=end_date) |
+                     Q(ngayTraThucTe__gte=start_date, ngayTraThucTe__lt=end_date)),
+                    tinhTrang=tinhTrang
+                ).values('sach__tenSach', 'tinhTrang', 'phieuMuon__ngayMuon', 'ngayTraThucTe')
+
+                if filtered_books:
+                    result = [
+                        {
+                            'tenSach': book['sach__tenSach'],
+                            'tinhTrang': book['tinhTrang'],
+                            'ngayMuon': book['phieuMuon__ngayMuon'],
+                            'ngayTraThucTe': book['ngayTraThucTe'],
+                        }
+                        for book in filtered_books
+                    ]
+                return Response(result, status=status.HTTP_200_OK)
+
+            else:
+                return Response({'error': 'Month and year parameters are required.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class PhieuMuonViewSet(viewsets.ModelViewSet):
     queryset = PhieuMuon.objects.all()
     serializer_class = PhieuMuonSerializer
