@@ -836,6 +836,28 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
         chi_tiet_phieu_muon.save()
         return Response({'message': 'Đã trả sách thành công.'}, status=status.HTTP_200_OK)
 
+    @action(methods=['patch'], detail=True, url_path='update-da-tra-tien-phat')
+    def update_da_tra_tien_phat(self, request, pk=None):
+        chi_tiet_phieu_muon = self.get_object()
+        da_tra_tien_phat = request.data.get('daTraTienPhat', None)
+
+        if da_tra_tien_phat is not None:
+            # Nếu đang ở trạng thái 'late', có thể cập nhật thành 'paid'
+            # Chỉ cần đảm bảo rằng đã thanh toán tiền phạt
+            if chi_tiet_phieu_muon.tinhTrang == 'late':
+                # Nếu đã thanh toán, cập nhật tình trạng
+                if da_tra_tien_phat:
+                    chi_tiet_phieu_muon.tinhTrang = 'paid'
+                else:
+                    return Response({'error': 'Cần thanh toán tiền phạt để chuyển sang trạng thái đã trả phạt.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+            chi_tiet_phieu_muon.daTraTienPhat = da_tra_tien_phat
+            chi_tiet_phieu_muon.save()  # Lưu thay đổi vào cơ sở dữ liệu
+            return Response({'message': 'Trạng thái đã trả tiền phạt và tình trạng đã được cập nhật.'},
+                            status=status.HTTP_200_OK)
+
+        return Response({'error': 'Trường daTraTienPhat không được cung cấp.'}, status=status.HTTP_400_BAD_REQUEST)
 
 @csrf_exempt
 def payment_view(request: HttpRequest):

@@ -79,7 +79,7 @@ class PhieuMuonSerializer(serializers.ModelSerializer):
     def get_tenSach(self, obj):
         return [
             chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()
-            if chi_tiet.sach is not None and chi_tiet.sach.is_active  # Check for None and active status
+            if chi_tiet.sach is not None and chi_tiet.sach.is_active
         ]
 
 
@@ -110,7 +110,7 @@ class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
     def get_tenSach(self, obj):
         return [
             chi_tiet.sach.tenSach for chi_tiet in obj.chi_tiet_phieu_muon.all()
-            if chi_tiet.sach is not None and chi_tiet.sach.is_active  # Ensure sach is active
+            if chi_tiet.sach is not None and chi_tiet.sach.is_active
         ]
 
     class Meta:
@@ -119,8 +119,8 @@ class ChiTietPhieuMuonSerializer(serializers.ModelSerializer):
 
 
 class BinhLuanSerializer(serializers.ModelSerializer):
-    user = NguoiDungSerializer(read_only=True)  # Include user details
-    sach = SachSerializer(read_only=True)  # Include book details
+    user = NguoiDungSerializer(read_only=True)
+    sach = SachSerializer(read_only=True)
 
     class Meta:
         model = BinhLuan
@@ -151,8 +151,8 @@ class ThichSerializer(serializers.ModelSerializer):
 
 
 class ChiaSeSerializer(serializers.ModelSerializer):
-    user = NguoiDungSerializer(read_only=True)  # Include user details
-    sach = SachSerializer(read_only=True)  # Include book details
+    user = NguoiDungSerializer(read_only=True)
+    sach = SachSerializer(read_only=True)
 
     class Meta:
         model = ChiaSe

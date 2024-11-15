@@ -87,6 +87,7 @@ class ChiTietPhieuMuon(models.Model):
         ('borrowed', 'Đang mượn'),
         ('returned', 'Đã trả'),
         ('late', 'Trễ hạn'),
+        ('paid', 'Đã trả phạt'),
     )
 
     phieuMuon = models.ForeignKey(PhieuMuon, on_delete=models.CASCADE, related_name="chi_tiet_phieu_muon")
@@ -94,10 +95,10 @@ class ChiTietPhieuMuon(models.Model):
     ngayTraThucTe = models.DateField(null=True, blank=True)
     tinhTrang = models.CharField(max_length=10, choices=STATUS_CHOICES, default='borrowed')
     tienPhat = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True)
-
+    daTraTienPhat = models.BooleanField(default=False, null = True)
     def save(self, *args, **kwargs):
-        if not self.pk:  # Only trigger on new borrowing, not updates
-            self.sach.borrow_book()  # Decrease stock and increase borrowed count
+        if not self.pk:
+            self.sach.borrow_book()
 
         # When returning the book
         if self.ngayTraThucTe:
@@ -107,7 +108,10 @@ class ChiTietPhieuMuon(models.Model):
                 self.tinhTrang = 'late'
             else:
                 self.tinhTrang = 'returned'
-            self.sach.return_book()  # Increase stock and decrease borrowed count
+            self.sach.return_book()
+
+        if self.daTraTienPhat:
+            self.tinhTrang = 'paid'
 
         super().save(*args, **kwargs)
 
