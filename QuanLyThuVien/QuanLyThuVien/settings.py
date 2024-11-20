@@ -9,7 +9,7 @@ SECRET_KEY = 'django-insecure-g0=j%u&t%_yh(c*lt0pyv72)0@zm782qg!^ogx5g43wo+#d6h8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['192.168.1.9']
+ALLOWED_HOSTS = ['192.168.1.8']
 
 cloudinary.config(
     cloud_name="dmjydfpev",
@@ -20,7 +20,7 @@ cloudinary.config(
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://192.168.1.9:3000",
+    "http://192.168.1.8:3000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

@@ -479,7 +479,7 @@ class SachViewSet(viewsets.ModelViewSet):
     def bulk_return(self, request):
         try:
             with transaction.atomic():
-                data = request.data.get('chi_tiet_ids')  # List of ChiTietPhieuMuon IDs to return
+                data = request.data.get('chi_tiet_ids')
                 user = request.user
                 returned_books = []
 
@@ -555,29 +555,22 @@ class SachViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='borrow-return-late-statistics')
     def borrow_return_late_statistics(self, request):
         try:
-            # Get current date
             current_time = timezone.now()
 
-            # Get the current year and month
             current_year = current_time.year
             current_month = current_time.month
 
-            # Prepare result dictionary
             result = {
                 'monthly_statistics': []
             }
 
-            # Iterate through the last 12 months in chronological order
             for i in range(12):
-                # Calculate year and month for the current iteration
                 month = (current_month - i) % 12
                 year = current_year - (current_month - i <= 0)
 
-                # Normalize month (January is 1, December is 12)
                 if month == 0:
                     month = 12
 
-                # Get start and end date for the current month
                 start_date = timezone.datetime(year, month, 1)
                 end_date = timezone.datetime(year, month + 1, 1) if month < 12 else timezone.datetime(year + 1, 1, 1)
 
@@ -599,7 +592,6 @@ class SachViewSet(viewsets.ModelViewSet):
                     ngayTraThucTe__lt=end_date
                 ).count()
 
-                # Append the statistics for the month only if there are non-zero counts
                 if borrowed_books > 0 or returned_books > 0 or late_books > 0:
                     result['monthly_statistics'].append({
                         'year': year,
@@ -609,7 +601,6 @@ class SachViewSet(viewsets.ModelViewSet):
                         'late': late_books
                     })
 
-            # Sort the statistics by year and month (not really necessary as we are iterating in order)
             result['monthly_statistics'].sort(key=lambda x: (x['year'], x['month']))
 
             return Response(result, status=status.HTTP_200_OK)
@@ -725,7 +716,6 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
 
     @action(methods=['post'], detail=False, url_path='create-ctpm')
     def create_ctpm(self, request):
-        # Ensure the request data includes references to NguoiDung, PhieuMuon, and Sach
         phieu_muon_id = request.data.get('phieuMuon')
         sach_id = request.data.get('sach')
 
@@ -735,11 +725,8 @@ class ChiTietPhieuMuonViewSet(viewsets.ModelViewSet):
         except (PhieuMuon.DoesNotExist, Sach.DoesNotExist):
             return Response({'error': 'Invalid PhieuMuon or Sach ID'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create the ChiTietPhieuMuon instance
         serializer = ChiTietPhieuMuonSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        # Associate with the current user (NguoiDung) if needed
         chi_tiet_phieu_muon = serializer.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -786,11 +773,11 @@ class BinhLuanViewSet(viewsets.ModelViewSet):
     serializer_class = BinhLuanSerializer
     permission_classes = [AllowAny]
     def list(self, request, *args, **kwargs):
-        sach_id = request.query_params.get('sach_id')  # Get sach_id from query params
+        sach_id = request.query_params.get('sach_id')
         if sach_id:
-            queryset = BinhLuan.objects.filter(sach__id=sach_id)  # Filter comments by book
+            queryset = BinhLuan.objects.filter(sach__id=sach_id)
         else:
-            queryset = BinhLuan.objects.all()  # Default to all comments if no sach_id is provided
+            queryset = BinhLuan.objects.all()
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
